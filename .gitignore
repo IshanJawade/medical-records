@@ -30,6 +30,7 @@ Thumbs.db
 backend/__pycache__/
 backend/*.py[cod]
 backend/*$py.class
+*.pyc
 
 # Virtual environment
 backend/venv/
@@ -73,6 +74,7 @@ frontend/build/
 frontend/dist/
 frontend/.pnp/
 frontend/.pnp.js
+node_modules/
 
 # Environment files
 frontend/.env
