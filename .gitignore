@@ -1,0 +1,102 @@
+# ==================================================
+# GLOBAL IGNORE RULES
+# ==================================================
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Environment files (global)
+.env
+.env.local
+.env.*
+!.env.example
+
+# ==================================================
+# BACKEND (Django)
+# ==================================================
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+
+# Virtual environment
+backend/venv/
+backend/.venv/
+backend/env/
+backend/ENV/
+
+# Django specific
+backend/db.sqlite3
+backend/media/
+backend/static/
+backend/staticfiles/
+backend/local_settings.py
+
+# Unit test / coverage
+backend/htmlcov/
+backend/.tox/
+backend/.nox/
+backend/.coverage
+backend/.coverage.*
+backend/.cache
+backend/nosetests.xml
+backend/coverage.xml
+backend/*.cover
+backend/*.py,cover
+backend/.hypothesis/
+
+# PyInstaller
+backend/*.manifest
+backend/*.spec
+
+# Migrations cache (optional, but keep if auto-generated)
+# backend/**/migrations/__pycache__/
+# backend/**/migrations/*.pyc
+
+# ==================================================
+# FRONTEND (React)
+# ==================================================
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.pnp/
+frontend/.pnp.js
+
+# Environment files
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Coverage / Testing
+frontend/coverage/
+frontend/jest-html-reporters-*.html
+
+# Lock files (optional: keep if you want deterministic installs)
+# frontend/package-lock.json
+# frontend/yarn.lock
+
+# ==================================================
+# DOCKER / DEV CONTAINERS (optional)
+# ==================================================
+docker-compose.override.yml
+.docker/
+.devcontainer/
