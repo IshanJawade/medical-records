@@ -64,17 +64,41 @@ const ReceptionistDashboard = () => {
     setErrorMessage(null);
   };
 
-  const toggleCaseForm = () => {
-    setShowCaseForm((value) => {
-      const next = !value;
-      if (!next) {
-        setCaseForm(defaultCaseForm);
-        setSelectedPatientId("");
-        setCasePatientQuery("");
-      }
-      return next;
-    });
+  const resetCaseFormState = () => {
+    setCaseForm(defaultCaseForm);
+    setSelectedPatientId("");
+    setCasePatientQuery("");
+  };
+
+  const openCaseForm = () => {
     resetMessages();
+    if (!showCaseForm) {
+      resetCaseFormState();
+    }
+    setShowCaseForm(true);
+  };
+
+  const closeCaseForm = () => {
+    resetCaseFormState();
+    setShowCaseForm(false);
+  };
+
+  const openPatientForm = () => {
+    resetMessages();
+    setPatientForm(defaultPatientForm);
+    setEditPatientId(null);
+    setEditPatientForm(defaultPatientForm);
+    setShowPatientForm(true);
+  };
+
+  const closePatientForm = () => {
+    setPatientForm(defaultPatientForm);
+    setShowPatientForm(false);
+  };
+
+  const closeEditForm = () => {
+    setEditPatientId(null);
+    setEditPatientForm(defaultPatientForm);
   };
 
   const casePatientMatches = useMemo(() => {
@@ -112,6 +136,27 @@ const ReceptionistDashboard = () => {
       return fullName.includes(query) || patient.date_of_birth.includes(query);
     });
   }, [patientSearch, patients]);
+
+  const stats = useMemo(
+    () => [
+      {
+        label: "Active cases",
+        value: cases.length,
+        hint: "Cases awaiting doctor intake.",
+      },
+      {
+        label: "Registered patients",
+        value: patients.length,
+        hint: "Profiles created by your desk.",
+      },
+      {
+        label: "Available doctors",
+        value: doctors.length,
+        hint: "Doctors ready for assignments.",
+      },
+    ],
+    [cases.length, patients.length, doctors.length],
+  );
 
   const selectedPatient = selectedPatientId
     ? patients.find((patient) => String(patient.id) === String(selectedPatientId))
@@ -156,10 +201,8 @@ const ReceptionistDashboard = () => {
       }
       const created = await createCase(payload);
       setCases((current) => [created, ...current]);
-      setCaseForm(defaultCaseForm);
-      setSelectedPatientId("");
+      closeCaseForm();
       setStatusMessage(`Case ${created.case_number} created.`);
-      setShowCaseForm(false);
     } catch (error) {
       console.error("Case creation failed", error);
       const detail = error.response?.data;
@@ -180,8 +223,7 @@ const ReceptionistDashboard = () => {
       };
       const created = await createPatient(payload);
       setPatients((current) => [...current, created]);
-      setPatientForm(defaultPatientForm);
-      setShowPatientForm(false);
+      closePatientForm();
       setSelectedPatientId(String(created.id));
       setStatusMessage("Patient registered and selected for the case.");
     } catch (error) {
@@ -205,6 +247,8 @@ const ReceptionistDashboard = () => {
       date_of_birth: patient.date_of_birth,
       attending_doctor: patient.attending_doctor ? String(patient.attending_doctor) : "",
     });
+    setShowPatientForm(false);
+    setPatientForm(defaultPatientForm);
     resetMessages();
   };
 
@@ -232,7 +276,7 @@ const ReceptionistDashboard = () => {
             : caseItem,
         ),
       );
-      setEditPatientId(null);
+      closeEditForm();
       setStatusMessage("Patient details updated.");
     } catch (error) {
       console.error("Patient update failed", error);
@@ -248,274 +292,392 @@ const ReceptionistDashboard = () => {
   }
 
   return (
-    <div className="dashboard-grid">
-      {statusMessage && <p className="status-text">{statusMessage}</p>}
-      {errorMessage && <p className="error-text">{errorMessage}</p>}
-
-      <section className="content-card">
-        <div className="card-header">
-          <h2>Cases</h2>
-          <button type="button" onClick={toggleCaseForm}>
-            {showCaseForm ? "Close" : "New Case"}
+    <div className="receptionist-dashboard">
+      <header className="dashboard-hero">
+        <div className="hero-copy">
+          <p className="hero-kicker">Reception</p>
+          <h1>Patient intake &amp; case routing</h1>
+          <p>Capture symptoms quickly, keep doctors informed, and guide patients through their visit.</p>
+        </div>
+        <div className="hero-actions">
+          <button type="button" className="btn btn-light" onClick={openPatientForm}>
+            + Register patient
+          </button>
+          <button type="button" className="btn btn-primary" onClick={openCaseForm}>
+            + New case
           </button>
         </div>
-        <input
-          type="search"
-          placeholder="Search cases by number, patient, or doctor"
-          value={caseSearch}
-          onChange={(event) => setCaseSearch(event.target.value)}
-        />
-        {filteredCases.length === 0 ? (
-          <p>No cases match your search.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Case #</th>
-                <th>Patient</th>
-                <th>Assigned Doctor(s)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredCases.map((caseItem) => (
-                <tr key={caseItem.id}>
-                  <td>{caseItem.case_number}</td>
-                  <td>{caseItem.patient_name}</td>
-                  <td>{caseItem.assigned_doctor_names.join(", ") || "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      </header>
 
-      {showCaseForm && (
-        <section className="content-card">
-          <h2>Initialise Case</h2>
-          <form className="case-form" onSubmit={handleCaseSubmit}>
-            <label htmlFor="case-patient-search">Find Patient</label>
-            <input
-              id="case-patient-search"
-              type="search"
-              placeholder="Search by patient name"
-              value={casePatientQuery}
-              onChange={(event) => setCasePatientQuery(event.target.value)}
-            />
-            <ul className="search-results">
-              {casePatientMatches.map((patient) => (
-                <li key={patient.id}>
-                  <button type="button" onClick={() => selectPatientForCase(patient.id)}>
-                    {patient.first_name} {patient.last_name} (DOB {patient.date_of_birth})
-                  </button>
-                </li>
-              ))}
-              {casePatientMatches.length === 0 && <li>No patients found.</li>}
-            </ul>
+      <div className="stats-grid">
+        {stats.map((stat) => (
+          <article key={stat.label} className="stat-card">
+            <span className="stat-label">{stat.label}</span>
+            <span className="stat-value">{stat.value}</span>
+            <span className="stat-hint">{stat.hint}</span>
+          </article>
+        ))}
+      </div>
 
-            {selectedPatient && (
-              <div className="selected-patient">
-                <p>
-                  <strong>Selected:</strong> {selectedPatient.first_name} {selectedPatient.last_name} (DOB {" "}
-                  {selectedPatient.date_of_birth})
-                </p>
-                <div className="selected-actions">
-                  <button type="button" onClick={() => beginEditPatient(selectedPatient.id)}>
-                    Edit patient details
-                  </button>
-                  <button type="button" onClick={() => setSelectedPatientId("")}>
-                    Clear selection
-                  </button>
-                </div>
+      {(statusMessage || errorMessage) && (
+        <div className="message-stack">
+          {statusMessage && <div className="message-banner message-banner--success">{statusMessage}</div>}
+          {errorMessage && <div className="message-banner message-banner--error">{errorMessage}</div>}
+        </div>
+      )}
+
+      <div className="dashboard-content">
+        <div className="dashboard-main">
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>Case overview</h2>
+                <p className="panel-subtitle">Stay on top of every new intake from the front desk.</p>
               </div>
-            )}
-
-            <button type="button" onClick={() => setShowPatientForm(true)}>
-              Register new patient
-            </button>
-
-            <label htmlFor="case-symptoms">Symptoms</label>
-            <textarea
-              id="case-symptoms"
-              name="symptoms"
-              rows="4"
-              value={caseForm.symptoms}
-              onChange={handleCaseFormChange}
-              required
-            />
-
-            <label htmlFor="case-description">Additional Details</label>
-            <textarea
-              id="case-description"
-              name="description"
-              rows="3"
-              value={caseForm.description}
-              onChange={handleCaseFormChange}
-            />
-
-            <button type="submit" disabled={caseSubmitting}>
-              {caseSubmitting ? "Creating..." : "Create Case"}
-            </button>
-          </form>
-        </section>
-      )}
-
-      {showPatientForm && (
-        <section className="content-card">
-          <h2>Register Patient</h2>
-          <form className="patient-form" onSubmit={handlePatientSubmit}>
-            <label htmlFor="new-patient-first">First Name</label>
-            <input
-              id="new-patient-first"
-              name="first_name"
-              value={patientForm.first_name}
-              onChange={handlePatientFormChange}
-              required
-            />
-
-            <label htmlFor="new-patient-last">Last Name</label>
-            <input
-              id="new-patient-last"
-              name="last_name"
-              value={patientForm.last_name}
-              onChange={handlePatientFormChange}
-              required
-            />
-
-            <label htmlFor="new-patient-dob">Date of Birth</label>
-            <input
-              id="new-patient-dob"
-              name="date_of_birth"
-              type="date"
-              value={patientForm.date_of_birth}
-              onChange={handlePatientFormChange}
-              required
-            />
-
-            <label htmlFor="new-patient-doctor">Attending Doctor</label>
-            <select
-              id="new-patient-doctor"
-              name="attending_doctor"
-              value={patientForm.attending_doctor}
-              onChange={handlePatientFormChange}
-              required
-            >
-              <option value="">Select doctor</option>
-              {doctors.map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>
-                  {doctor.user.first_name && doctor.user.last_name
-                    ? `${doctor.user.first_name} ${doctor.user.last_name}`
-                    : doctor.user.username}
-                </option>
-              ))}
-            </select>
-
-            <div className="form-actions">
-              <button type="button" onClick={() => setShowPatientForm(false)}>
-                Cancel
-              </button>
-              <button type="submit" disabled={patientSubmitting}>
-                {patientSubmitting ? "Saving..." : "Save Patient"}
-              </button>
+              <div className="panel-actions">
+                <div className="search-field">
+                  <label className="sr-only" htmlFor="case-search">
+                    Search cases
+                  </label>
+                  <input
+                    id="case-search"
+                    type="search"
+                    className="search-input"
+                    placeholder="Search by case, patient, or doctor"
+                    value={caseSearch}
+                    onChange={(event) => setCaseSearch(event.target.value)}
+                  />
+                </div>
+                <button type="button" className="btn btn-primary" onClick={openCaseForm}>
+                  + New case
+                </button>
+              </div>
             </div>
-          </form>
-        </section>
-      )}
+            <div className="table-container">
+              {filteredCases.length === 0 ? (
+                <div className="empty-state">
+                  <h3>No cases match your search</h3>
+                  <p>Use the new case action to capture symptoms for a patient.</p>
+                </div>
+              ) : (
+                <table className="case-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Case #</th>
+                      <th scope="col">Patient</th>
+                      <th scope="col">Assigned doctor(s)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCases.map((caseItem) => (
+                      <tr key={caseItem.id}>
+                        <td>{caseItem.case_number}</td>
+                        <td>{caseItem.patient_name}</td>
+                        <td>{caseItem.assigned_doctor_names.join(", ") || "Not assigned"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </section>
 
-      <section className="content-card">
-        <h2>Patient Directory</h2>
-        <input
-          type="search"
-          placeholder="Search patients"
-          value={patientSearch}
-          onChange={(event) => setPatientSearch(event.target.value)}
-        />
-        {patientDirectoryMatches.length === 0 ? (
-          <p>No patients match your search.</p>
-        ) : (
-          <ul className="item-list">
-            {patientDirectoryMatches.map((patient) => (
-              <li key={patient.id}>
+          {showCaseForm && (
+            <section className="panel accent-panel">
+              <div className="panel-header">
                 <div>
-                  <strong>
-                    {patient.first_name} {patient.last_name}
-                  </strong>
-                  <span> DOB {patient.date_of_birth}</span>
+                  <h2>Initialise case</h2>
+                  <p className="panel-subtitle">Select a patient and log their symptoms for the doctor.</p>
                 </div>
-                <div className="item-actions">
-                  <button type="button" onClick={() => selectPatientForCase(patient.id)}>
-                    Use for case
-                  </button>
-                  <button type="button" onClick={() => beginEditPatient(patient.id)}>
-                    Edit
+                <button type="button" className="btn btn-ghost" onClick={closeCaseForm}>
+                  Close
+                </button>
+              </div>
+              <form className="stack-form" onSubmit={handleCaseSubmit}>
+                <div className="form-field">
+                  <label htmlFor="case-patient-search">Find patient</label>
+                  <input
+                    id="case-patient-search"
+                    type="search"
+                    className="search-input"
+                    placeholder="Search by patient name"
+                    value={casePatientQuery}
+                    onChange={(event) => setCasePatientQuery(event.target.value)}
+                  />
+                </div>
+                <ul className="suggestion-list">
+                  {casePatientMatches.map((patient) => (
+                    <li key={patient.id}>
+                      <button type="button" onClick={() => selectPatientForCase(patient.id)}>
+                        {patient.first_name} {patient.last_name} (DOB {patient.date_of_birth})
+                      </button>
+                    </li>
+                  ))}
+                  {casePatientMatches.length === 0 && <li className="empty-pill">No patients found.</li>}
+                </ul>
+
+                {selectedPatient && (
+                  <div className="selected-card">
+                    <p>
+                      <strong>Selected:</strong> {selectedPatient.first_name} {selectedPatient.last_name} (DOB {" "}
+                      {selectedPatient.date_of_birth})
+                    </p>
+                    <div className="selected-actions">
+                      <button type="button" className="btn btn-light" onClick={() => beginEditPatient(selectedPatient.id)}>
+                        Edit patient
+                      </button>
+                      <button type="button" className="btn btn-ghost" onClick={() => setSelectedPatientId("")}>
+                        Clear selection
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <button type="button" className="btn btn-light" onClick={openPatientForm}>
+                  + Register new patient
+                </button>
+
+                <div className="form-field">
+                  <label htmlFor="case-symptoms">Symptoms</label>
+                  <textarea
+                    id="case-symptoms"
+                    name="symptoms"
+                    rows="4"
+                    value={caseForm.symptoms}
+                    onChange={handleCaseFormChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="case-description">Additional details</label>
+                  <textarea
+                    id="case-description"
+                    name="description"
+                    rows="3"
+                    value={caseForm.description}
+                    onChange={handleCaseFormChange}
+                  />
+                </div>
+
+                <div className="form-actions">
+                  <button type="submit" className="btn btn-primary" disabled={caseSubmitting}>
+                    {caseSubmitting ? "Creating..." : "Create case"}
                   </button>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+              </form>
+            </section>
+          )}
+        </div>
 
-      {editPatientId && (
-        <section className="content-card">
-          <h2>Edit Patient</h2>
-          <form className="patient-form" onSubmit={handleEditPatientSubmit}>
-            <label htmlFor="edit-patient-first">First Name</label>
-            <input
-              id="edit-patient-first"
-              name="first_name"
-              value={editPatientForm.first_name}
-              onChange={handleEditPatientChange}
-              required
-            />
-
-            <label htmlFor="edit-patient-last">Last Name</label>
-            <input
-              id="edit-patient-last"
-              name="last_name"
-              value={editPatientForm.last_name}
-              onChange={handleEditPatientChange}
-              required
-            />
-
-            <label htmlFor="edit-patient-dob">Date of Birth</label>
-            <input
-              id="edit-patient-dob"
-              name="date_of_birth"
-              type="date"
-              value={editPatientForm.date_of_birth}
-              onChange={handleEditPatientChange}
-              required
-            />
-
-            <label htmlFor="edit-patient-doctor">Attending Doctor</label>
-            <select
-              id="edit-patient-doctor"
-              name="attending_doctor"
-              value={editPatientForm.attending_doctor}
-              onChange={handleEditPatientChange}
-              required
-            >
-              <option value="">Select doctor</option>
-              {doctors.map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>
-                  {doctor.user.first_name && doctor.user.last_name
-                    ? `${doctor.user.first_name} ${doctor.user.last_name}`
-                    : doctor.user.username}
-                </option>
-              ))}
-            </select>
-
-            <div className="form-actions">
-              <button type="button" onClick={() => setEditPatientId(null)}>
-                Cancel
-              </button>
-              <button type="submit" disabled={editSubmitting}>
-                {editSubmitting ? "Updating..." : "Save Changes"}
-              </button>
+        <aside className="dashboard-aside">
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>Patient directory</h2>
+                <p className="panel-subtitle">Search, select, or edit patient details.</p>
+              </div>
             </div>
-          </form>
-        </section>
-      )}
+            <div className="form-field">
+              <label htmlFor="patient-search">Search patients</label>
+              <input
+                id="patient-search"
+                type="search"
+                className="search-input"
+                placeholder="Search by name or birth date"
+                value={patientSearch}
+                onChange={(event) => setPatientSearch(event.target.value)}
+              />
+            </div>
+            {patientDirectoryMatches.length === 0 ? (
+              <div className="empty-state">
+                <h3>No patients match your search</h3>
+                <p>Register a new patient to start their intake.</p>
+              </div>
+            ) : (
+              <ul className="directory-list">
+                {patientDirectoryMatches.map((patient) => {
+                  const isSelected = String(patient.id) === String(selectedPatientId);
+                  return (
+                    <li key={patient.id} className={`directory-item${isSelected ? " is-selected" : ""}`}>
+                      <div className="directory-meta">
+                        <span className="directory-name">
+                          {patient.first_name} {patient.last_name}
+                        </span>
+                        <span className="directory-sub">DOB {patient.date_of_birth}</span>
+                      </div>
+                      <div className="directory-actions">
+                        <button type="button" className="btn btn-light" onClick={() => selectPatientForCase(patient.id)}>
+                          Use for case
+                        </button>
+                        <button type="button" className="btn btn-ghost" onClick={() => beginEditPatient(patient.id)}>
+                          Edit
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          {showPatientForm && (
+            <section className="panel accent-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Register patient</h2>
+                  <p className="panel-subtitle">Create a patient profile and assign their primary doctor.</p>
+                </div>
+                <button type="button" className="btn btn-ghost" onClick={closePatientForm}>
+                  Close
+                </button>
+              </div>
+              <form className="stack-form" onSubmit={handlePatientSubmit}>
+                <div className="form-field">
+                  <label htmlFor="new-patient-first">First name</label>
+                  <input
+                    id="new-patient-first"
+                    name="first_name"
+                    value={patientForm.first_name}
+                    onChange={handlePatientFormChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="new-patient-last">Last name</label>
+                  <input
+                    id="new-patient-last"
+                    name="last_name"
+                    value={patientForm.last_name}
+                    onChange={handlePatientFormChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="new-patient-dob">Date of birth</label>
+                  <input
+                    id="new-patient-dob"
+                    name="date_of_birth"
+                    type="date"
+                    value={patientForm.date_of_birth}
+                    onChange={handlePatientFormChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="new-patient-doctor">Attending doctor</label>
+                  <select
+                    id="new-patient-doctor"
+                    name="attending_doctor"
+                    value={patientForm.attending_doctor}
+                    onChange={handlePatientFormChange}
+                    required
+                  >
+                    <option value="">Select doctor</option>
+                    {doctors.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.user.first_name && doctor.user.last_name
+                          ? `${doctor.user.first_name} ${doctor.user.last_name}`
+                          : doctor.user.username}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-actions">
+                  <button type="button" className="btn btn-ghost" onClick={closePatientForm}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={patientSubmitting}>
+                    {patientSubmitting ? "Saving..." : "Save patient"}
+                  </button>
+                </div>
+              </form>
+            </section>
+          )}
+
+          {editPatientId && (
+            <section className="panel accent-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Edit patient</h2>
+                  <p className="panel-subtitle">Update patient details and doctor assignments.</p>
+                </div>
+                <button type="button" className="btn btn-ghost" onClick={closeEditForm}>
+                  Close
+                </button>
+              </div>
+              <form className="stack-form" onSubmit={handleEditPatientSubmit}>
+                <div className="form-field">
+                  <label htmlFor="edit-patient-first">First name</label>
+                  <input
+                    id="edit-patient-first"
+                    name="first_name"
+                    value={editPatientForm.first_name}
+                    onChange={handleEditPatientChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="edit-patient-last">Last name</label>
+                  <input
+                    id="edit-patient-last"
+                    name="last_name"
+                    value={editPatientForm.last_name}
+                    onChange={handleEditPatientChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="edit-patient-dob">Date of birth</label>
+                  <input
+                    id="edit-patient-dob"
+                    name="date_of_birth"
+                    type="date"
+                    value={editPatientForm.date_of_birth}
+                    onChange={handleEditPatientChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label htmlFor="edit-patient-doctor">Attending doctor</label>
+                  <select
+                    id="edit-patient-doctor"
+                    name="attending_doctor"
+                    value={editPatientForm.attending_doctor}
+                    onChange={handleEditPatientChange}
+                    required
+                  >
+                    <option value="">Select doctor</option>
+                    {doctors.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.user.first_name && doctor.user.last_name
+                          ? `${doctor.user.first_name} ${doctor.user.last_name}`
+                          : doctor.user.username}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-actions">
+                  <button type="button" className="btn btn-ghost" onClick={closeEditForm}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={editSubmitting}>
+                    {editSubmitting ? "Updating..." : "Save changes"}
+                  </button>
+                </div>
+              </form>
+            </section>
+          )}
+        </aside>
+      </div>
     </div>
   );
 };
