@@ -6,6 +6,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     AdminPatientViewSet,
     AdminUserViewSet,
+    AppointmentViewSet,
     CaseViewSet,
     DoctorViewSet,
     LoginView,
@@ -21,6 +22,7 @@ router.register("patients", PatientViewSet, basename="patients")
 router.register("doctors", DoctorViewSet, basename="doctors")
 router.register("cases", CaseViewSet, basename="cases")
 router.register("prescriptions", PrescriptionViewSet, basename="prescriptions")
+router.register("appointments", AppointmentViewSet, basename="appointments")
 
 admin_router = DefaultRouter()
 admin_router.register("users", AdminUserViewSet, basename="admin-users")

@@ -73,3 +73,18 @@ class PrescriptionAdmin(admin.ModelAdmin):
     list_filter = ("created_at", "doctor")
     search_fields = ("prescription_number", "case__case_number", "patient__last_name")
     inlines = (PrescriptionAttachmentInline,)
+
+
+@admin.register(models.Appointment)
+class AppointmentAdmin(admin.ModelAdmin):
+    list_display = (
+        "appointment_number",
+        "patient",
+        "case",
+        "doctor",
+        "status",
+        "created_at",
+    )
+    list_filter = ("status", "doctor", "created_at")
+    search_fields = ("appointment_number", "patient__last_name", "patient__first_name")
+

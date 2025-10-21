@@ -163,3 +163,57 @@ class PrescriptionAttachment(models.Model):
 
     def __str__(self) -> str:
         return self.label or self.file.name
+
+
+def generate_appointment_number() -> str:
+    """Generate a unique appointment identifier based on today's date."""
+    date_str = timezone.now().strftime("%Y%m%d")
+    return f"APT-{date_str}-{uuid.uuid4().hex[:8].upper()}"
+
+
+class Appointment(models.Model):
+    """Represents an appointment for a patient, optionally linked to a case."""
+
+    appointment_number = models.CharField(
+        max_length=64,
+        unique=True,
+        default=generate_appointment_number,
+        editable=False,
+    )
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="appointments")
+    case = models.ForeignKey(
+        Case,
+        on_delete=models.SET_NULL,
+        related_name="appointments",
+        null=True,
+        blank=True,
+    )
+    doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE, related_name="appointments")
+    created_by = models.ForeignKey(
+        Receptionist,
+        on_delete=models.SET_NULL,
+        related_name="created_appointments",
+        null=True,
+        blank=True,
+    )
+    notes = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=32,
+        choices=[
+            ("PENDING", "Pending"),
+            ("IN_PROGRESS", "In Progress"),
+            ("COMPLETED", "Completed"),
+            ("CANCELLED", "Cancelled"),
+        ],
+        default="PENDING",
+    )
+    scheduled_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        case_info = self.case.case_number if self.case else "New Case"
+        return f"{self.appointment_number} - {self.patient} ({case_info})"

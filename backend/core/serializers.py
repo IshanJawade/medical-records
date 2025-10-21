@@ -5,6 +5,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .models import (
+    Appointment,
     Case,
     CaseAttachment,
     Doctor,
@@ -303,3 +304,45 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
             Receptionist.objects.filter(user=instance).delete()
 
         return instance
+
+
+class AppointmentSerializer(serializers.ModelSerializer):
+    patient = serializers.PrimaryKeyRelatedField(queryset=Patient.objects.all())
+    case = serializers.PrimaryKeyRelatedField(queryset=Case.objects.all(), required=False, allow_null=True)
+    doctor = serializers.PrimaryKeyRelatedField(queryset=Doctor.objects.all())
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    patient_name = serializers.SerializerMethodField()
+    case_name = serializers.SerializerMethodField()
+    doctor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Appointment
+        fields = [
+            "id",
+            "appointment_number",
+            "patient",
+            "patient_name",
+            "case",
+            "case_name",
+            "doctor",
+            "doctor_name",
+            "created_by",
+            "notes",
+            "status",
+            "scheduled_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["appointment_number", "created_at", "updated_at", "created_by"]
+
+    def get_patient_name(self, obj: Appointment) -> str:
+        return f"{obj.patient.first_name} {obj.patient.last_name}".strip()
+
+    def get_case_name(self, obj: Appointment) -> str:
+        if obj.case:
+            return obj.case.name or obj.case.case_number
+        return "New Case"
+
+    def get_doctor_name(self, obj: Appointment) -> str:
+        return str(obj.doctor)
+

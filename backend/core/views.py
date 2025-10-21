@@ -11,11 +11,12 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Case, Doctor, Patient, Prescription, User
+from .models import Appointment, Case, Doctor, Patient, Prescription, User
 from .permissions import IsAdmin, PatientAccessPermission
 from .serializers import (
     AdminUserDetailSerializer,
     AdminUserUpdateSerializer,
+    AppointmentSerializer,
     CaseSerializer,
     DoctorSerializer,
     PatientSerializer,
@@ -292,3 +293,68 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         if user.role != User.Role.ADMIN:
             raise PermissionDenied("Only administrators can delete prescriptions.")
         instance.delete()
+
+
+class AppointmentViewSet(viewsets.ModelViewSet):
+    """Manage appointments with role-aware permissions."""
+
+    queryset = (
+        Appointment.objects.select_related("patient", "case", "doctor__user", "created_by__user")
+        .all()
+    )
+    serializer_class = AppointmentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.role == User.Role.ADMIN:
+            return queryset
+        if user.role == User.Role.DOCTOR:
+            doctor_profile = getattr(user, "doctor_profile", None)
+            if doctor_profile:
+                return queryset.filter(doctor=doctor_profile)
+            return queryset.none()
+        if user.role == User.Role.RECEPTIONIST:
+            receptionist_profile = getattr(user, "receptionist_profile", None)
+            if receptionist_profile:
+                return queryset.filter(created_by=receptionist_profile)
+        return queryset.none()
+
+    def perform_create(self, serializer: AppointmentSerializer) -> None:
+        user = self.request.user
+        if user.role == User.Role.ADMIN:
+            serializer.save(created_by=None)
+            return
+        if user.role == User.Role.RECEPTIONIST:
+            receptionist_profile = getattr(user, "receptionist_profile", None)
+            if receptionist_profile is None:
+                raise PermissionDenied("Receptionist profile missing.")
+            serializer.save(created_by=receptionist_profile)
+            return
+        raise PermissionDenied("Only receptionists or administrators can create appointments.")
+
+    def perform_update(self, serializer: AppointmentSerializer) -> None:
+        user = self.request.user
+        if user.role == User.Role.ADMIN:
+            serializer.save()
+            return
+        if user.role == User.Role.DOCTOR:
+            # Doctors can update appointment status and notes
+            allowed_fields = {"status", "notes"}
+            changed_fields = set(serializer.validated_data.keys())
+            if not changed_fields.issubset(allowed_fields):
+                raise PermissionDenied("Doctors can only update status and notes.")
+            serializer.save()
+            return
+        if user.role == User.Role.RECEPTIONIST:
+            serializer.save()
+            return
+        raise PermissionDenied("You do not have permission to update this appointment.")
+
+    def perform_destroy(self, instance: Appointment) -> None:
+        user = self.request.user
+        if user.role not in {User.Role.ADMIN, User.Role.RECEPTIONIST}:
+            raise PermissionDenied("Only administrators or receptionists can delete appointments.")
+        instance.delete()
+
