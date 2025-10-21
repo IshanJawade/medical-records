@@ -4,7 +4,16 @@ from __future__ import annotations
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import Doctor, Patient, Receptionist, User
+from .models import (
+    Case,
+    CaseAttachment,
+    Doctor,
+    Patient,
+    Prescription,
+    PrescriptionAttachment,
+    Receptionist,
+    User,
+)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -52,13 +61,116 @@ class PatientSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "date_of_birth",
-            "medical_history",
             "attending_doctor",
             "created_by",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at", "created_by"]
+
+
+class CaseAttachmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CaseAttachment
+        fields = ["id", "label", "file", "uploaded_at"]
+        read_only_fields = ["uploaded_at"]
+
+
+class PrescriptionAttachmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PrescriptionAttachment
+        fields = ["id", "label", "file", "uploaded_at"]
+        read_only_fields = ["uploaded_at"]
+
+
+class PrescriptionSerializer(serializers.ModelSerializer):
+    doctor = serializers.PrimaryKeyRelatedField(queryset=Doctor.objects.all(), required=False)
+    patient = serializers.PrimaryKeyRelatedField(queryset=Patient.objects.all())
+    case = serializers.PrimaryKeyRelatedField(queryset=Case.objects.all())
+    attachments = PrescriptionAttachmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Prescription
+        fields = [
+            "id",
+            "prescription_number",
+            "case",
+            "doctor",
+            "patient",
+            "details",
+            "attachments",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+    def validate(self, attrs: dict) -> dict:
+        case = attrs.get("case") or getattr(self.instance, "case", None)
+        patient = attrs.get("patient") or getattr(self.instance, "patient", None)
+        doctor = attrs.get("doctor") or getattr(self.instance, "doctor", None)
+        if doctor is None:
+            request = self.context.get("request")
+            if request and getattr(request.user, "role", None) == User.Role.DOCTOR:
+                doctor = getattr(request.user, "doctor_profile", None)
+
+        if case and patient and case.patient_id != patient.id:
+            raise serializers.ValidationError({"patient": "Patient must match the case patient."})
+
+        if doctor and case:
+            is_attending = case.patient.attending_doctor_id == doctor.id
+            is_assigned = case.assigned_doctors.filter(id=doctor.id).exists()
+            if not (is_attending or is_assigned):
+                raise serializers.ValidationError(
+                    {"doctor": "Doctor must be assigned to the case or be the patient's attending doctor."}
+                )
+
+        return attrs
+
+
+class CaseSerializer(serializers.ModelSerializer):
+    patient = serializers.PrimaryKeyRelatedField(queryset=Patient.objects.all())
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    assigned_doctors = serializers.PrimaryKeyRelatedField(queryset=Doctor.objects.all(), many=True, required=False)
+    attachments = CaseAttachmentSerializer(many=True, read_only=True)
+    prescriptions = PrescriptionSerializer(many=True, read_only=True)
+    patient_name = serializers.SerializerMethodField()
+    assigned_doctor_names = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Case
+        fields = [
+            "id",
+            "case_number",
+            "name",
+            "description",
+            "symptoms",
+            "details",
+            "patient",
+            "patient_name",
+            "created_by",
+            "assigned_doctors",
+            "assigned_doctor_names",
+            "attachments",
+            "prescriptions",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["case_number", "created_at", "updated_at", "created_by", "patient_name", "assigned_doctor_names"]
+
+    def get_patient_name(self, obj: Case) -> str:
+        return f"{obj.patient.first_name} {obj.patient.last_name}".strip()
+
+    def get_assigned_doctor_names(self, obj: Case) -> list[str]:
+        return [str(doctor) for doctor in obj.assigned_doctors.all()]
+
+    def create(self, validated_data: dict) -> Case:
+        assigned_doctors = validated_data.pop("assigned_doctors", [])
+        case = Case.objects.create(**validated_data)
+        if not assigned_doctors and case.patient.attending_doctor_id:
+            assigned_doctors = [case.patient.attending_doctor]
+        if assigned_doctors:
+            case.assigned_doctors.set(assigned_doctors)
+        return case
 
 
 class SignupSerializer(serializers.ModelSerializer):

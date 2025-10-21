@@ -39,6 +39,11 @@ export const createPatient = async (payload) => {
   return data;
 };
 
+export const updatePatient = async (patientId, payload) => {
+  const { data } = await client.patch(`patients/${patientId}/`, payload);
+  return data;
+};
+
 export const listDoctors = async () => {
   const { data } = await client.get("doctors/");
   return data;

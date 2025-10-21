@@ -39,11 +39,11 @@ class PatientAccessPermission(BasePermission):
             return True
 
         if request.method in SAFE_METHODS:
-            return user.role == User.Role.DOCTOR
+            return user.role in {User.Role.DOCTOR, User.Role.RECEPTIONIST}
         if request.method == "POST":
             return user.role == User.Role.RECEPTIONIST
         if request.method in {"PUT", "PATCH"}:
-            return user.role == User.Role.DOCTOR
+            return user.role in {User.Role.DOCTOR, User.Role.RECEPTIONIST}
         return False
 
     def has_object_permission(self, request, view, obj) -> bool:
@@ -55,7 +55,17 @@ class PatientAccessPermission(BasePermission):
             return True
 
         if request.method in SAFE_METHODS:
-            return user.role == User.Role.DOCTOR
+            if user.role == User.Role.DOCTOR:
+                return True
+            if user.role == User.Role.RECEPTIONIST:
+                receptionist_profile = getattr(user, "receptionist_profile", None)
+                return receptionist_profile is not None and obj.created_by_id == receptionist_profile.id
+            return False
         if request.method in {"PUT", "PATCH"}:
-            return user.role == User.Role.DOCTOR
+            if user.role == User.Role.DOCTOR:
+                return True
+            if user.role == User.Role.RECEPTIONIST:
+                receptionist_profile = getattr(user, "receptionist_profile", None)
+                return receptionist_profile is not None and obj.created_by_id == receptionist_profile.id
+            return False
         return False

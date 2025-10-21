@@ -2,20 +2,24 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from rest_framework import generics, status, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Doctor, Patient, User
+from .models import Case, Doctor, Patient, Prescription, User
 from .permissions import IsAdmin, PatientAccessPermission
 from .serializers import (
     AdminUserDetailSerializer,
     AdminUserUpdateSerializer,
+    CaseSerializer,
     DoctorSerializer,
     PatientSerializer,
+    PrescriptionSerializer,
     SignupSerializer,
     UserSerializer,
 )
@@ -85,6 +89,8 @@ class PatientViewSet(viewsets.ModelViewSet):
             serializer.save(created_by=None)
             return
         receptionist_profile = getattr(self.request.user, "receptionist_profile", None)
+        if receptionist_profile is None:
+            raise PermissionDenied("Receptionist profile missing.")
         serializer.save(created_by=receptionist_profile)
 
     def get_queryset(self):
@@ -96,6 +102,10 @@ class PatientViewSet(viewsets.ModelViewSet):
             doctor_profile = getattr(user, "doctor_profile", None)
             if doctor_profile:
                 return queryset.filter(attending_doctor=doctor_profile)
+        if user.role == User.Role.RECEPTIONIST:
+            receptionist_profile = getattr(user, "receptionist_profile", None)
+            if receptionist_profile:
+                return queryset.filter(created_by=receptionist_profile)
         return queryset.none()
 
 
@@ -144,3 +154,141 @@ class DoctorViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Doctor.objects.select_related("user").all()
     serializer_class = DoctorSerializer
     permission_classes = [IsAuthenticated]
+
+
+class CaseViewSet(viewsets.ModelViewSet):
+    """Manage medical cases with role sensitive access rules."""
+
+    queryset = (
+        Case.objects.select_related("patient", "created_by__user")
+        .prefetch_related("assigned_doctors__user", "attachments", "prescriptions__attachments")
+        .all()
+    )
+    serializer_class = CaseSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.role == User.Role.ADMIN:
+            return queryset
+        if user.role == User.Role.DOCTOR:
+            doctor_profile = getattr(user, "doctor_profile", None)
+            if doctor_profile:
+                return queryset.filter(
+                    Q(assigned_doctors=doctor_profile) | Q(patient__attending_doctor=doctor_profile)
+                ).distinct()
+            return queryset.none()
+        if user.role == User.Role.RECEPTIONIST:
+            receptionist_profile = getattr(user, "receptionist_profile", None)
+            if receptionist_profile:
+                return queryset.filter(created_by=receptionist_profile)
+        return queryset.none()
+
+    def perform_create(self, serializer: CaseSerializer) -> None:
+        user = self.request.user
+        if user.role not in {User.Role.RECEPTIONIST, User.Role.ADMIN}:
+            raise PermissionDenied("Only receptionists or administrators can create cases.")
+        if user.role == User.Role.RECEPTIONIST:
+            receptionist_profile = getattr(user, "receptionist_profile", None)
+            if receptionist_profile is None:
+                raise PermissionDenied("Receptionist profile missing.")
+            serializer.save(created_by=receptionist_profile)
+            return
+        serializer.save(created_by=None)
+
+    def perform_update(self, serializer: CaseSerializer) -> None:
+        user = self.request.user
+        if user.role == User.Role.ADMIN:
+            serializer.save()
+            return
+        if user.role == User.Role.DOCTOR:
+            doctor_profile = getattr(user, "doctor_profile", None)
+            if doctor_profile is None:
+                raise PermissionDenied("Doctor profile missing.")
+            assigned_doctors = serializer.instance.assigned_doctors.all()
+            if doctor_profile not in assigned_doctors and serializer.instance.patient.attending_doctor != doctor_profile:
+                raise PermissionDenied("You are not assigned to this case.")
+            if "assigned_doctors" in serializer.validated_data:
+                incoming = {doc.id for doc in serializer.validated_data["assigned_doctors"]}
+                existing = set(serializer.instance.assigned_doctors.values_list("id", flat=True))
+                if incoming != existing:
+                    raise PermissionDenied("Only administrators can change doctor assignments.")
+            serializer.save()
+            return
+        raise PermissionDenied("You do not have permission to update this case.")
+
+    def perform_destroy(self, instance: Case) -> None:
+        user = self.request.user
+        if user.role != User.Role.ADMIN:
+            raise PermissionDenied("Only administrators can delete cases.")
+        instance.delete()
+
+
+class PrescriptionViewSet(viewsets.ModelViewSet):
+    """Manage prescriptions associated with cases."""
+
+    queryset = (
+        Prescription.objects.select_related("case", "doctor__user", "patient")
+        .prefetch_related("attachments")
+        .all()
+    )
+    serializer_class = PrescriptionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.role == User.Role.ADMIN:
+            return queryset
+        if user.role == User.Role.DOCTOR:
+            doctor_profile = getattr(user, "doctor_profile", None)
+            if doctor_profile:
+                return queryset.filter(Q(doctor=doctor_profile) | Q(case__assigned_doctors=doctor_profile)).distinct()
+            return queryset.none()
+        if user.role == User.Role.RECEPTIONIST:
+            receptionist_profile = getattr(user, "receptionist_profile", None)
+            if receptionist_profile:
+                return queryset.filter(case__created_by=receptionist_profile)
+        return queryset.none()
+
+    def perform_create(self, serializer: PrescriptionSerializer) -> None:
+        user = self.request.user
+        doctor_profile = getattr(user, "doctor_profile", None)
+        if user.role == User.Role.DOCTOR:
+            if doctor_profile is None:
+                raise PermissionDenied("Doctor profile missing.")
+            serializer.save(doctor=doctor_profile)
+            return
+        if user.role == User.Role.ADMIN:
+            assigned_doctor = serializer.validated_data.get("doctor")
+            if assigned_doctor is None:
+                raise PermissionDenied("Prescriptions created by admins must specify a doctor.")
+            serializer.save()
+            return
+        raise PermissionDenied("Only doctors or administrators can create prescriptions.")
+
+    def perform_update(self, serializer: PrescriptionSerializer) -> None:
+        user = self.request.user
+        if user.role == User.Role.ADMIN:
+            serializer.save()
+            return
+        if user.role == User.Role.DOCTOR:
+            doctor_profile = getattr(user, "doctor_profile", None)
+            if doctor_profile is None:
+                raise PermissionDenied("Doctor profile missing.")
+            if doctor_profile != serializer.instance.doctor:
+                raise PermissionDenied("You did not author this prescription.")
+            if "case" in serializer.validated_data and serializer.validated_data["case"] != serializer.instance.case:
+                raise PermissionDenied("Case cannot be reassigned by doctors.")
+            if "patient" in serializer.validated_data and serializer.validated_data["patient"] != serializer.instance.patient:
+                raise PermissionDenied("Patient cannot be changed by doctors.")
+            serializer.save(doctor=doctor_profile)
+            return
+        raise PermissionDenied("You do not have permission to update this prescription.")
+
+    def perform_destroy(self, instance: Prescription) -> None:
+        user = self.request.user
+        if user.role != User.Role.ADMIN:
+            raise PermissionDenied("Only administrators can delete prescriptions.")
+        instance.delete()

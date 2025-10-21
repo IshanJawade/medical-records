@@ -34,3 +34,42 @@ class PatientAdmin(admin.ModelAdmin):
     )
     list_filter = ("attending_doctor", "created_at")
     search_fields = ("last_name", "first_name")
+
+
+class CaseAttachmentInline(admin.TabularInline):
+    model = models.CaseAttachment
+    extra = 0
+
+
+class PrescriptionAttachmentInline(admin.TabularInline):
+    model = models.PrescriptionAttachment
+    extra = 0
+
+
+@admin.register(models.Case)
+class CaseAdmin(admin.ModelAdmin):
+    list_display = (
+        "case_number",
+        "name",
+        "patient",
+        "created_by",
+        "created_at",
+    )
+    list_filter = ("created_at", "assigned_doctors")
+    search_fields = ("case_number", "name", "patient__last_name")
+    filter_horizontal = ("assigned_doctors",)
+    inlines = (CaseAttachmentInline,)
+
+
+@admin.register(models.Prescription)
+class PrescriptionAdmin(admin.ModelAdmin):
+    list_display = (
+        "prescription_number",
+        "case",
+        "doctor",
+        "patient",
+        "created_at",
+    )
+    list_filter = ("created_at", "doctor")
+    search_fields = ("prescription_number", "case__case_number", "patient__last_name")
+    inlines = (PrescriptionAttachmentInline,)

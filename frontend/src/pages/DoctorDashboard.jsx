@@ -39,7 +39,6 @@ const DoctorDashboard = () => {
             <tr>
               <th>Name</th>
               <th>DOB</th>
-              <th>Notes</th>
             </tr>
           </thead>
           <tbody>
@@ -49,7 +48,6 @@ const DoctorDashboard = () => {
                   {patient.first_name} {patient.last_name}
                 </td>
                 <td>{patient.date_of_birth}</td>
-                <td>{patient.medical_history || "—"}</td>
               </tr>
             ))}
           </tbody>

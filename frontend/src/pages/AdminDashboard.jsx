@@ -25,7 +25,7 @@ const initialPatientForm = {
   first_name: "",
   last_name: "",
   date_of_birth: "",
-  medical_history: "",
+  symptoms: "",
   attending_doctor: "",
 };
 
@@ -87,8 +87,9 @@ const AdminDashboard = () => {
     event.preventDefault();
     setStatusMessage(null);
     try {
+      const { symptoms, ...patientPayload } = patientForm;
       const payload = {
-        ...patientForm,
+        ...patientPayload,
         attending_doctor: Number(patientForm.attending_doctor),
       };
       const created = await adminCreatePatient(payload);
@@ -237,12 +238,12 @@ const AdminDashboard = () => {
             required
           />
 
-          <label htmlFor="patient-notes">Medical History</label>
+          <label htmlFor="patient-symptoms">Symptoms</label>
           <textarea
-            id="patient-notes"
-            name="medical_history"
+            id="patient-symptoms"
+            name="symptoms"
             rows="4"
-            value={patientForm.medical_history}
+            value={patientForm.symptoms}
             onChange={handlePatientChange}
           />
 
