@@ -128,10 +128,16 @@ class CaseAttachment(models.Model):
         return self.label or self.file.name
 
 
+def generate_prescription_number() -> str:
+    """Generate a unique prescription identifier."""
+    timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
+    return f"RX-{timestamp}-{uuid.uuid4().hex[:6].upper()}"
+
+
 class Prescription(models.Model):
     """Stores prescription details linked to a case."""
 
-    prescription_number = models.CharField(max_length=64, unique=True)
+    prescription_number = models.CharField(max_length=64, unique=True, default=generate_prescription_number, editable=False)
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="prescriptions")
     doctor = models.ForeignKey(Doctor, on_delete=models.PROTECT, related_name="prescriptions")
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="prescriptions")

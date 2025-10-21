@@ -103,27 +103,28 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = ["prescription_number", "created_at", "updated_at"]
 
     def validate(self, attrs: dict) -> dict:
         case = attrs.get("case") or getattr(self.instance, "case", None)
         patient = attrs.get("patient") or getattr(self.instance, "patient", None)
-        doctor = attrs.get("doctor") or getattr(self.instance, "doctor", None)
-        if doctor is None:
-            request = self.context.get("request")
-            if request and getattr(request.user, "role", None) == User.Role.DOCTOR:
-                doctor = getattr(request.user, "doctor_profile", None)
 
         if case and patient and case.patient_id != patient.id:
             raise serializers.ValidationError({"patient": "Patient must match the case patient."})
 
-        if doctor and case:
-            is_attending = case.patient.attending_doctor_id == doctor.id
-            is_assigned = case.assigned_doctors.filter(id=doctor.id).exists()
-            if not (is_attending or is_assigned):
-                raise serializers.ValidationError(
-                    {"doctor": "Doctor must be assigned to the case or be the patient's attending doctor."}
-                )
+        # Allow doctors to create prescriptions if they have access to the case
+        # The viewset's get_queryset already filters cases appropriately
+        request = self.context.get("request")
+        if request and getattr(request.user, "role", None) == User.Role.DOCTOR:
+            doctor = getattr(request.user, "doctor_profile", None)
+            if doctor and case:
+                # Check if doctor has access to this case
+                is_attending = case.patient.attending_doctor_id == doctor.id
+                is_assigned = case.assigned_doctors.filter(id=doctor.id).exists()
+                if not (is_attending or is_assigned):
+                    raise serializers.ValidationError(
+                        {"case": "You do not have access to this case."}
+                    )
 
         return attrs
 
