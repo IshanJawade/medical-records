@@ -27,10 +27,12 @@ Thumbs.db
 # ==================================================
 # BACKEND (Django)
 # ==================================================
-backend/__pycache__/
-backend/*.py[cod]
-backend/*$py.class
-*.pyc
+# Python bytecode & caches (put these near the top)
+__pycache__/
+**/__pycache__/
+*.py[cod]
+**/*.py[cod]
+*$py.class
 
 # Virtual environment
 backend/venv/
